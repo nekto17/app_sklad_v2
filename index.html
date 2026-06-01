@@ -1,0 +1,2722 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Система складского учета — Вектор</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js (for analytics & turnover) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SheetJS (for Excel Export/Import simulation) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Google Fonts (Inter) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            border: "hsl(214.3, 31.8%, 91.4%)",
+            background: "hsl(0, 0%, 100%)",
+            foreground: "hsl(222.2, 84%, 4.9%)",
+            primary: {
+              DEFAULT: "hsl(221.2, 83.2%, 53.3%)",
+              foreground: "hsl(210, 40%, 98%)",
+            },
+            secondary: {
+              DEFAULT: "hsl(210, 40%, 96.1%)",
+              foreground: "hsl(222.2, 47.4%, 11.2%)",
+            },
+            muted: {
+              DEFAULT: "hsl(210, 40%, 96.1%)",
+              foreground: "hsl(215.4, 16.3%, 46.9%)",
+            },
+            accent: {
+              DEFAULT: "hsl(210, 40%, 96.1%)",
+              foreground: "hsl(222.2, 47.4%, 11.2%)",
+            },
+            destructive: {
+              DEFAULT: "hsl(0, 84.2%, 60.2%)",
+              foreground: "hsl(210, 40%, 98%)",
+            },
+            success: {
+              DEFAULT: "hsl(142.1, 76.2%, 36.3%)",
+              foreground: "hsl(355.7, 100%, 99.7%)"
+            }
+          },
+          borderRadius: {
+            lg: "0.5rem",
+            md: "calc(0.5rem - 2px)",
+            sm: "calc(0.5rem - 4px)",
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-[#f8fafc] text-slate-900 min-h-screen flex flex-col">
+
+  <!-- React Root -->
+  <div id="root" class="flex flex-col min-h-screen"></div>
+
+  <!-- React & Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Application Script -->
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // --- НАЧАЛЬНЫЕ ДАННЫЕ (Имитация БД с добавлением паролей) ---
+    const initialUsers = [
+      { id: 1, name: "Александр Иванов", username: "admin", role: "Admin", email: "admin@vector-sklad.ru", password: "admin" },
+      { id: 2, name: "Мария Смирнова", username: "manager1", role: "Manager", email: "smirnova@vector-sklad.ru", password: "manager1" },
+      { id: 3, name: "Петр Сидоров", username: "manager2", role: "Manager", email: "sidorov@vector-sklad.ru", password: "manager2" }
+    ];
+
+    const initialCategories = [
+      { id: 1, name: "Строительные материалы" },
+      { id: 2, name: "Электротовары" },
+      { id: 3, name: "Сантехника" },
+      { id: 4, name: "Инструменты" }
+    ];
+
+    const initialItems = [
+      { id: 1, sku: "SKU-001", name: "Кабель медный ВВГнг 3х2.5", categoryId: 2, unit: "м", minStock: 200 },
+      { id: 2, sku: "SKU-002", name: "Сухая смесь М300 Пескобетон 40кг", categoryId: 1, unit: "шт", minStock: 100 },
+      { id: 3, sku: "SKU-003", name: "Смеситель для ванны однорычажный", categoryId: 3, unit: "шт", minStock: 15 },
+      { id: 4, sku: "SKU-004", name: "Перфоратор Bosch GBH 240", categoryId: 4, unit: "шт", minStock: 5 },
+      { id: 5, sku: "SKU-005", name: "Труба полипропиленовая армированная 20мм", categoryId: 3, unit: "м", minStock: 150 },
+      { id: 6, sku: "SKU-006", name: "Лампа светодиодная E27 12Вт", categoryId: 2, unit: "шт", minStock: 300 }
+    ];
+
+    const initialSellers = [
+      { id: 1, name: "ООО 'ЭлектроОпт'", contact: "Иванов Юрий", phone: "+7 (495) 123-45-67", email: "info@electroopt.ru" },
+      { id: 2, name: "ТД 'СтройКомплект'", contact: "Козлов Сергей", phone: "+7 (495) 765-43-21", email: "sales@stroykomplekt.ru" },
+      { id: 3, name: "СантехРесурс", contact: "Васильева Анна", phone: "+7 (812) 555-88-99", email: "anna@santexresurs.ru" }
+    ];
+
+    const initialClients = [
+      { id: 1, name: "ИП Петров А.В.", contact: "Алексей Петров", phone: "+7 (999) 111-22-33", email: "petrov@mail.ru" },
+      { id: 2, name: "ООО 'РемСтройГрупп'", contact: "Дмитрий Соколов", phone: "+7 (921) 333-44-55", email: "sokolov@remstroy.ru" },
+      { id: 3, name: "АО 'СтройИнвест'", contact: "Михайлов Игорь", phone: "+7 (499) 999-88-77", email: "invest@stroy.ru" }
+    ];
+
+    const initialWarehouses = [
+      { id: 1, name: "Основной склад (Север)", address: "г. Москва, ул. Полярная, д. 25" },
+      { id: 2, name: "Дополнительный склад (Юг)", address: "г. Москва, ул. Дорожная, д. 10" },
+      { id: 3, name: "Транзитный склад", address: "г. Домодедово, Логистический центр" }
+    ];
+
+    // Текущие остатки на складах (stock_balances)
+    const initialStockBalances = [
+      { id: 1, itemId: 1, warehouseId: 1, balance: 450 },
+      { id: 2, itemId: 1, warehouseId: 2, balance: 150 },
+      { id: 3, itemId: 2, warehouseId: 1, balance: 80 }, 
+      { id: 4, itemId: 3, warehouseId: 1, balance: 12 },
+      { id: 5, itemId: 3, warehouseId: 2, balance: 10 },  
+      { id: 6, itemId: 4, warehouseId: 1, balance: 3 },  
+      { id: 7, itemId: 5, warehouseId: 1, balance: 250 },
+      { id: 8, itemId: 6, warehouseId: 1, balance: 500 },
+      { id: 9, itemId: 6, warehouseId: 2, balance: 200 }
+    ];
+
+    // История движения товаров (inventory_logs)
+    const initialInventoryLogs = [
+      { id: 1, timestamp: "2026-05-15 10:12", type: "Поступление", itemId: 1, qty: 500, price: 85, warehouseId: 1, counterparty: "ООО 'ЭлектроОпт'", user: "Мария Смирнова" },
+      { id: 2, timestamp: "2026-05-16 14:30", type: "Поступление", itemId: 2, qty: 100, price: 340, warehouseId: 1, counterparty: "ТД 'СтройКомплект'", user: "Петр Сидоров" },
+      { id: 3, timestamp: "2026-05-17 11:00", type: "Перемещение", itemId: 1, qty: 150, price: 0, warehouseId: 2, sourceWarehouseId: 1, counterparty: "Внутреннее", user: "Александр Иванов" },
+      { id: 4, timestamp: "2026-05-18 16:45", type: "Отгрузка", itemId: 2, qty: 20, price: 450, warehouseId: 1, counterparty: "ИП Петров А.В.", user: "Мария Смирнова" },
+      { id: 5, timestamp: "2026-05-19 09:15", type: "Списание", itemId: 4, qty: 1, price: 8500, warehouseId: 1, counterparty: "Брак при хранении", user: "Петр Сидоров" }
+    ];
+
+    function App() {
+      // --- СОСТОЯНИЕ ПРИЛОЖЕНИЯ ---
+      const [currentUser, setCurrentUser] = useState(null);
+      const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, items, actions, counterparties, warehouses, users, reports
+      
+      // Списки сущностей
+      const [users, setUsers] = useState(initialUsers);
+      const [categories, setCategories] = useState(initialCategories);
+      const [items, setItems] = useState(initialItems);
+      const [sellers, setSellers] = useState(initialSellers);
+      const [clients, setClients] = useState(initialClients);
+      const [warehouses, setWarehouses] = useState(initialWarehouses);
+      const [stockBalances, setStockBalances] = useState(initialStockBalances);
+      const [inventoryLogs, setInventoryLogs] = useState(initialInventoryLogs);
+
+      // Вспомогательные состояния уведомлений
+      const [toast, setToast] = useState(null);
+
+      // --- СОСТОЯНИЕ ФОРМ И МОДАЛОК ---
+      const [loginUsername, setLoginUsername] = useState("");
+      const [loginPassword, setLoginPassword] = useState("");
+      const [showNewUserModal, setShowNewUserModal] = useState(false);
+      const [showNewItemModal, setShowNewItemModal] = useState(false);
+      const [showNewSellerModal, setShowNewSellerModal] = useState(false);
+      const [showNewClientModal, setShowNewClientModal] = useState(false);
+      const [showNewWarehouseModal, setShowNewWarehouseModal] = useState(false);
+      const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
+      
+      // Модальные окна для складских операций
+      const [showOpModal, setShowOpModal] = useState(false);
+      const [showEditOpModal, setShowEditOpModal] = useState(false);
+      const [opType, setOpType] = useState("Поступление"); // Поступление, Отгрузка, Перемещение, Списание
+      
+      // Модальное окно инвентаризации
+      const [showInventoryModal, setShowInventoryModal] = useState(false);
+
+      // Форма редактирования/добавления пользователя
+      const [userForm, setUserForm] = useState({ id: null, name: "", username: "", role: "Manager", email: "", password: "" });
+      // Форма товара
+      const [itemForm, setItemForm] = useState({ id: null, sku: "", name: "", categoryId: 1, unit: "шт", minStock: 10 });
+      // Форма контрагента
+      const [counterpartyForm, setCounterpartyForm] = useState({ id: null, type: "seller", name: "", contact: "", phone: "", email: "" });
+      // Форма склада
+      const [warehouseForm, setWarehouseForm] = useState({ id: null, name: "", address: "" });
+      // Форма категории
+      const [categoryForm, setCategoryForm] = useState({ id: null, name: "" });
+
+      // Форма проведения операции
+      const [opForm, setOpForm] = useState({
+        itemId: "",
+        qty: "",
+        price: "",
+        warehouseId: "", 
+        sourceWarehouseId: "", 
+        counterparty: "",
+        newCounterpartyName: "", 
+        newCounterpartyType: "seller",
+        newItemSku: "", 
+        newItemName: "",
+        newItemCategory: 1,
+        newItemUnit: "шт",
+        newItemMinStock: 10
+      });
+
+      // Форма редактирования операции для Администратора
+      const [editingOp, setEditingOp] = useState(null);
+
+      // Форма инвентаризации
+      const [inventoryForm, setInventoryForm] = useState({
+        warehouseId: 1,
+        items: [] 
+      });
+
+      // Поиск по остаткам на главной в реальном времени
+      const [searchQuery, setSearchQuery] = useState("");
+
+      const showToast = (message, type = "success") => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+      };
+
+      const handleAutoLogin = () => {
+        const admin = users.find(u => u.username === "admin");
+        if (admin) {
+          setCurrentUser(admin);
+          showToast("Вход выполнен: Администратор Александр Иванов", "success");
+        }
+      };
+
+      const handleLogin = (e) => {
+        e.preventDefault();
+        const foundUser = users.find(u => u.username.toLowerCase() === loginUsername.trim().toLowerCase());
+        if (foundUser) {
+          if (foundUser.password === loginPassword) {
+            setCurrentUser(foundUser);
+            showToast(`Добро пожаловать, ${foundUser.name}! Ваша роль: ${foundUser.role}`, "success");
+          } else {
+            showToast("Неверный пароль. Попробуйте ещё раз.", "error");
+          }
+        } else {
+          showToast("Пользователь не найден. Попробуйте 'admin' или 'manager1'", "error");
+        }
+      };
+
+      const handleLogout = () => {
+        setCurrentUser(null);
+        setLoginUsername("");
+        setLoginPassword("");
+        showToast("Вы вышли из системы", "info");
+      };
+
+      // --- КРИТИЧЕСКИЕ ОСТАТКИ (Уведомления) ---
+      const lowStockAlerts = useMemo(() => {
+        const consolidated = {};
+        items.forEach(item => {
+          consolidated[item.id] = { ...item, actualStock: 0 };
+        });
+        stockBalances.forEach(sb => {
+          if (consolidated[sb.itemId]) {
+            consolidated[sb.itemId].actualStock += sb.balance;
+          }
+        });
+        return Object.values(consolidated).filter(item => item.actualStock < item.minStock);
+      }, [items, stockBalances]);
+
+      // --- CRUD ПОЛЬЗОВАТЕЛИ (Только Admin) ---
+      const handleSaveUser = (e) => {
+        e.preventDefault();
+        if (currentUser?.role !== "Admin") {
+          showToast("Ошибка: Добавлять и редактировать пользователей может только администратор!", "error");
+          return;
+        }
+
+        if (userForm.id) {
+          setUsers(users.map(u => u.id === userForm.id ? { 
+            ...u, 
+            name: userForm.name, 
+            username: userForm.username, 
+            role: userForm.role, 
+            email: userForm.email,
+            password: userForm.password || u.password 
+          } : u));
+          showToast(`Пользователь ${userForm.name} успешно обновлен`);
+        } else {
+          if (!userForm.password) {
+            showToast("Пароль обязателен для нового сотрудника!", "error");
+            return;
+          }
+          const newId = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1;
+          setUsers([...users, { ...userForm, id: newId }]);
+          showToast(`Пользователь ${userForm.name} успешно создан`);
+        }
+        setShowNewUserModal(false);
+        setUserForm({ id: null, name: "", username: "", role: "Manager", email: "", password: "" });
+      };
+
+      const handleDeleteUser = (id) => {
+        if (currentUser?.role !== "Admin") {
+          showToast("Удалять пользователей может только администратор!", "error");
+          return;
+        }
+        const userToDelete = users.find(u => u.id === id);
+        if (userToDelete.username === "admin") {
+          showToast("Нельзя удалить главного администратора!", "error");
+          return;
+        }
+        setUsers(users.filter(u => u.id !== id));
+        showToast("Пользователь удален");
+      };
+
+      // --- CRUD ТОВАРЫ ---
+      const handleSaveItem = (e) => {
+        e.preventDefault();
+        if (itemForm.id) {
+          setItems(items.map(i => i.id === itemForm.id ? { ...i, sku: itemForm.sku, name: itemForm.name, categoryId: Number(itemForm.categoryId), unit: itemForm.unit, minStock: Number(itemForm.minStock) } : i));
+          showToast(`Товар ${itemForm.name} обновлен`);
+        } else {
+          const isSkuExist = items.some(i => i.sku.toLowerCase() === itemForm.sku.toLowerCase());
+          if (isSkuExist) {
+            showToast(`Товар с артикулом ${itemForm.sku} уже существует!`, "error");
+            return;
+          }
+          const newId = items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1;
+          setItems([...items, { ...itemForm, id: newId, categoryId: Number(itemForm.categoryId), minStock: Number(itemForm.minStock) }]);
+          showToast(`Товар ${itemForm.name} добавлен в каталог`);
+        }
+        setShowNewItemModal(false);
+        setItemForm({ id: null, sku: "", name: "", categoryId: 1, unit: "шт", minStock: 10 });
+      };
+
+      // --- CRUD КАТЕГОРИИ ---
+      const handleSaveCategory = (e) => {
+        e.preventDefault();
+        if (categoryForm.id) {
+          setCategories(categories.map(c => c.id === categoryForm.id ? { ...c, name: categoryForm.name } : c));
+          showToast(`Категория ${categoryForm.name} обновлена`);
+        } else {
+          const newId = categories.length > 0 ? Math.max(...categories.map(c => c.id)) + 1 : 1;
+          setCategories([...categories, { ...categoryForm, id: newId }]);
+          showToast(`Категория ${categoryForm.name} создана`);
+        }
+        setShowNewCategoryModal(false);
+        setCategoryForm({ id: null, name: "" });
+      };
+
+      const handleDeleteCategory = (id) => {
+        const hasProducts = items.some(i => i.categoryId === id);
+        if (hasProducts) {
+          showToast("Нельзя удалить категорию, в которой есть товары!", "error");
+          return;
+        }
+        setCategories(categories.filter(c => c.id !== id));
+        showToast("Категория удалена");
+      };
+
+      // --- CRUD КОНТРАГЕНТЫ ---
+      const handleSaveCounterparty = (e) => {
+        e.preventDefault();
+        const data = {
+          name: counterpartyForm.name,
+          contact: counterpartyForm.contact,
+          phone: counterpartyForm.phone,
+          email: counterpartyForm.email
+        };
+
+        if (counterpartyForm.type === "seller") {
+          if (counterpartyForm.id) {
+            setSellers(sellers.map(s => s.id === counterpartyForm.id ? { ...s, ...data } : s));
+            showToast(`Поставщик ${data.name} обновлен`);
+          } else {
+            const newId = sellers.length > 0 ? Math.max(...sellers.map(s => s.id)) + 1 : 1;
+            setSellers([...sellers, { ...data, id: newId }]);
+            showToast(`Поставщик ${data.name} добавлен`);
+          }
+        } else {
+          if (counterpartyForm.id) {
+            setClients(clients.map(c => c.id === counterpartyForm.id ? { ...c, ...data } : c));
+            showToast(`Покупатель ${data.name} обновлен`);
+          } else {
+            const newId = clients.length > 0 ? Math.max(...clients.map(c => c.id)) + 1 : 1;
+            setClients([...clients, { ...data, id: newId }]);
+            showToast(`Покупатель ${data.name} добавлен`);
+          }
+        }
+        setShowNewSellerModal(false);
+        setShowNewClientModal(false);
+        setCounterpartyForm({ id: null, type: "seller", name: "", contact: "", phone: "", email: "" });
+      };
+
+      const handleDeleteCounterparty = (type, id) => {
+        if (type === "seller") {
+          setSellers(sellers.filter(s => s.id !== id));
+          showToast("Поставщик удален");
+        } else {
+          setClients(clients.filter(c => c.id !== id));
+          showToast("Покупатель удален");
+        }
+      };
+
+      // --- CRUD СКЛАДЫ ---
+      const handleSaveWarehouse = (e) => {
+        e.preventDefault();
+        if (warehouseForm.id) {
+          setWarehouses(warehouses.map(w => w.id === warehouseForm.id ? { ...w, name: warehouseForm.name, address: warehouseForm.address } : w));
+          showToast(`Склад ${warehouseForm.name} обновлен`);
+        } else {
+          const newId = warehouses.length > 0 ? Math.max(...warehouses.map(w => w.id)) + 1 : 1;
+          setWarehouses([...warehouses, { ...warehouseForm, id: newId }]);
+          showToast(`Склад ${warehouseForm.name} добавлен`);
+        }
+        setShowNewWarehouseModal(false);
+        setWarehouseForm({ id: null, name: "", address: "" });
+      };
+
+      const handleDeleteWarehouse = (id) => {
+        const hasBalances = stockBalances.some(sb => sb.warehouseId === id && sb.balance > 0);
+        if (hasBalances) {
+          showToast("На складе есть остатки товаров! Сначала переместите или спишите их.", "error");
+          return;
+        }
+        setWarehouses(warehouses.filter(w => w.id !== id));
+        showToast("Склад удален");
+      };
+
+      // --- ПРОВЕДЕНИЕ СКЛАДСКИХ ОПЕРАЦИЙ (ТРАНЗАКЦИОННАЯ ЛОГИКА) ---
+      const handleCommitOperation = (e) => {
+        e.preventDefault();
+
+        let finalItemId = Number(opForm.itemId);
+        let finalCounterparty = opForm.counterparty;
+
+        if (opForm.itemId === "NEW") {
+          if (!opForm.newItemSku || !opForm.newItemName) {
+            showToast("Заполните артикул и название нового товара!", "error");
+            return;
+          }
+          if (items.some(i => i.sku.toLowerCase() === opForm.newItemSku.toLowerCase())) {
+            showToast("Такой артикул уже существует в каталоге!", "error");
+            return;
+          }
+          const newItemId = items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1;
+          const createdItem = {
+            id: newItemId,
+            sku: opForm.newItemSku,
+            name: opForm.newItemName,
+            categoryId: Number(opForm.newItemCategory),
+            unit: opForm.newItemUnit,
+            minStock: Number(opForm.newItemMinStock)
+          };
+          setItems(prev => [...prev, createdItem]);
+          finalItemId = newItemId;
+          showToast(`Создан новый товар: ${createdItem.name}`);
+        }
+
+        if (opForm.counterparty === "NEW") {
+          if (!opForm.newCounterpartyName) {
+            showToast("Укажите наименование нового контрагента!", "error");
+            return;
+          }
+          finalCounterparty = opForm.newCounterpartyName;
+          const counterpartyData = {
+            name: opForm.newCounterpartyName,
+            contact: "Создан при операции",
+            phone: "-",
+            email: "-"
+          };
+
+          if (opForm.newCounterpartyType === "seller") {
+            const newId = sellers.length > 0 ? Math.max(...sellers.map(s => s.id)) + 1 : 1;
+            setSellers(prev => [...prev, { ...counterpartyData, id: newId }]);
+            showToast(`Создан новый поставщик: ${opForm.newCounterpartyName}`);
+          } else {
+            const newId = clients.length > 0 ? Math.max(...clients.map(c => c.id)) + 1 : 1;
+            setClients(prev => [...prev, { ...counterpartyData, id: newId }]);
+            showToast(`Создан новый покупатель: ${opForm.newCounterpartyName}`);
+          }
+        }
+
+        const qtyVal = Number(opForm.qty);
+        const priceVal = Number(opForm.price);
+        const whId = Number(opForm.warehouseId);
+        const srcWhId = Number(opForm.sourceWarehouseId);
+
+        if (isNaN(qtyVal) || qtyVal <= 0) {
+          showToast("Укажите корректное количество!", "error");
+          return;
+        }
+
+        try {
+          if (opType === "Поступление") {
+            setStockBalances(prev => {
+              const copy = [...prev];
+              const idx = copy.findIndex(sb => sb.itemId === finalItemId && sb.warehouseId === whId);
+              if (idx > -1) {
+                copy[idx] = { ...copy[idx], balance: copy[idx].balance + qtyVal };
+              } else {
+                copy.push({ id: Date.now(), itemId: finalItemId, warehouseId: whId, balance: qtyVal });
+              }
+              return copy;
+            });
+            const logId = inventoryLogs.length > 0 ? Math.max(...inventoryLogs.map(l => l.id)) + 1 : 1;
+            setInventoryLogs(prev => [
+              {
+                id: logId,
+                timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                type: "Поступление",
+                itemId: finalItemId,
+                qty: qtyVal,
+                price: priceVal,
+                warehouseId: whId,
+                counterparty: finalCounterparty || "Поставщик не указан",
+                user: currentUser.name
+              },
+              ...prev
+            ]);
+            showToast("Поступление успешно оформлено!");
+          } 
+          
+          else if (opType === "Отгрузка") {
+            const currentSb = stockBalances.find(sb => sb.itemId === finalItemId && sb.warehouseId === whId);
+            if (!currentSb || currentSb.balance < qtyVal) {
+              throw new Error(`Недостаточно товара на складе! В наличии: ${currentSb ? currentSb.balance : 0}`);
+            }
+
+            setStockBalances(prev => {
+              return prev.map(sb => {
+                if (sb.itemId === finalItemId && sb.warehouseId === whId) {
+                  return { ...sb, balance: sb.balance - qtyVal };
+                }
+                return sb;
+              }).filter(sb => sb.balance >= 0); 
+            });
+
+            const logId = inventoryLogs.length > 0 ? Math.max(...inventoryLogs.map(l => l.id)) + 1 : 1;
+            setInventoryLogs(prev => [
+              {
+                id: logId,
+                timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                type: "Отгрузка",
+                itemId: finalItemId,
+                qty: qtyVal,
+                price: priceVal,
+                warehouseId: whId,
+                counterparty: finalCounterparty || "Покупатель не указан",
+                user: currentUser.name
+              },
+              ...prev
+            ]);
+            showToast("Отгрузка успешно проведена!");
+          } 
+          
+          else if (opType === "Перемещение") {
+            if (srcWhId === whId) {
+              throw new Error("Склад-источник и склад-получатель совпадают!");
+            }
+            const sourceSb = stockBalances.find(sb => sb.itemId === finalItemId && sb.warehouseId === srcWhId);
+            if (!sourceSb || sourceSb.balance < qtyVal) {
+              throw new Error(`Недостаточно товара на складе-источнике! Доступно: ${sourceSb ? sourceSb.balance : 0}`);
+            }
+
+            setStockBalances(prev => {
+              let copy = [...prev];
+              copy = copy.map(sb => {
+                if (sb.itemId === finalItemId && sb.warehouseId === srcWhId) {
+                  return { ...sb, balance: sb.balance - qtyVal };
+                }
+                return sb;
+              });
+              const destIdx = copy.findIndex(sb => sb.itemId === finalItemId && sb.warehouseId === whId);
+              if (destIdx > -1) {
+                copy[destIdx] = { ...copy[destIdx], balance: copy[destIdx].balance + qtyVal };
+              } else {
+                copy.push({ id: Date.now() + 1, itemId: finalItemId, warehouseId: whId, balance: qtyVal });
+              }
+              return copy;
+            });
+
+            const logId = inventoryLogs.length > 0 ? Math.max(...inventoryLogs.map(l => l.id)) + 1 : 1;
+            setInventoryLogs(prev => [
+              {
+                id: logId,
+                timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                type: "Перемещение",
+                itemId: finalItemId,
+                qty: qtyVal,
+                price: 0,
+                warehouseId: whId,
+                sourceWarehouseId: srcWhId,
+                counterparty: "Внутреннее",
+                user: currentUser.name
+              },
+              ...prev
+            ]);
+            showToast("Перемещение товаров выполнено успешно!");
+          } 
+          
+          else if (opType === "Списание") {
+            const currentSb = stockBalances.find(sb => sb.itemId === finalItemId && sb.warehouseId === whId);
+            if (!currentSb || currentSb.balance < qtyVal) {
+              throw new Error(`Недостаточно товара для списания! В наличии: ${currentSb ? currentSb.balance : 0}`);
+            }
+
+            setStockBalances(prev => {
+              return prev.map(sb => {
+                if (sb.itemId === finalItemId && sb.warehouseId === whId) {
+                  return { ...sb, balance: sb.balance - qtyVal };
+                }
+                return sb;
+              });
+            });
+
+            const logId = inventoryLogs.length > 0 ? Math.max(...inventoryLogs.map(l => l.id)) + 1 : 1;
+            setInventoryLogs(prev => [
+              {
+                id: logId,
+                timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                type: "Списание",
+                itemId: finalItemId,
+                qty: qtyVal,
+                price: priceVal,
+                warehouseId: whId,
+                counterparty: opForm.counterparty || "Причина не указана",
+                user: currentUser.name
+              },
+              ...prev
+            ]);
+            showToast("Товар успешно списан!");
+          }
+
+          setShowOpModal(false);
+          setOpForm({
+            itemId: "", qty: "", price: "", warehouseId: "", sourceWarehouseId: "", counterparty: "",
+            newCounterpartyName: "", newCounterpartyType: "seller", newItemSku: "", newItemName: "", newItemCategory: 1, newItemUnit: "шт", newItemMinStock: 10
+          });
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      };
+
+      // --- ФУНКЦИЯ РЕДАКТИРОВАНИЯ ОПЕРАЦИИ (Только Admin) ---
+      const handleUpdateOperation = (e) => {
+        e.preventDefault();
+        if (currentUser?.role !== "Admin") {
+          showToast("Действие доступно только администратору!", "error");
+          return;
+        }
+
+        const original = inventoryLogs.find(l => l.id === editingOp.id);
+        if (!original) return;
+
+        const newQty = Number(editingOp.qty);
+        const newPrice = Number(editingOp.price);
+        const qtyDiff = newQty - original.qty; // Разница между новым и старым количеством
+
+        try {
+          // Корректируем остаток на складе в зависимости от типа операции
+          setStockBalances(prev => {
+            let copy = [...prev];
+            const idx = copy.findIndex(sb => sb.itemId === original.itemId && sb.warehouseId === original.warehouseId);
+            
+            if (original.type === "Поступление") {
+              if (idx > -1) {
+                const newBalance = copy[idx].balance + qtyDiff;
+                if (newBalance < 0) throw new Error("Невозможно уменьшить поступление: образуется отрицательный остаток.");
+                copy[idx] = { ...copy[idx], balance: newBalance };
+              } else if (newQty > 0) {
+                copy.push({ id: Date.now(), itemId: original.itemId, warehouseId: original.warehouseId, balance: newQty });
+              }
+            } 
+            
+            else if (original.type === "Отгрузка" || original.type === "Списание") {
+              if (idx > -1) {
+                // Если мы увеличиваем отгрузку, остаток на складе должен уменьшиться
+                const newBalance = copy[idx].balance - qtyDiff;
+                if (newBalance < 0) throw new Error("Недостаточно свободного товара на складе для увеличения списания/отгрузки.");
+                copy[idx] = { ...copy[idx], balance: newBalance };
+              } else {
+                throw new Error("Не найден складской баланс для корректировки.");
+              }
+            }
+
+            else if (original.type === "Перемещение") {
+              // Корректируем склад-источник (при увеличении перемещения с источника спишется больше)
+              const srcIdx = copy.findIndex(sb => sb.itemId === original.itemId && sb.warehouseId === original.sourceWarehouseId);
+              if (srcIdx > -1) {
+                const newSrcBalance = copy[srcIdx].balance - qtyDiff;
+                if (newSrcBalance < 0) throw new Error("Недостаточно товара на складе-источнике.");
+                copy[srcIdx] = { ...copy[srcIdx], balance: newSrcBalance };
+              }
+              // Корректируем склад-получатель
+              if (idx > -1) {
+                const newDestBalance = copy[idx].balance + qtyDiff;
+                if (newDestBalance < 0) throw new Error("Невозможно уменьшить перемещение: на складе-получателе образуется отрицательный остаток.");
+                copy[idx] = { ...copy[idx], balance: newDestBalance };
+              }
+            }
+
+            return copy;
+          });
+
+          // Обновляем сам лог
+          setInventoryLogs(prev => prev.map(log => {
+            if (log.id === editingOp.id) {
+              return {
+                ...log,
+                qty: newQty,
+                price: newPrice,
+                counterparty: editingOp.counterparty,
+                user: currentUser.name + " (Ред.)"
+              };
+            }
+            return log;
+          }));
+
+          setShowEditOpModal(false);
+          setEditingOp(null);
+          showToast("Операция успешно отредактирована!");
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      };
+
+      // --- ФУНКЦИЯ УДАЛЕНИЯ ОПЕРАЦИИ (Только Admin) ---
+      const handleDeleteOperation = (id) => {
+        if (currentUser?.role !== "Admin") {
+          showToast("Действие доступно только администратору!", "error");
+          return;
+        }
+
+        const log = inventoryLogs.find(l => l.id === id);
+        if (!log) return;
+
+        try {
+          setStockBalances(prev => {
+            let copy = [...prev];
+            const idx = copy.findIndex(sb => sb.itemId === log.itemId && sb.warehouseId === log.warehouseId);
+
+            if (log.type === "Поступление") {
+              // При удалении прихода мы должны вычесть количество
+              if (idx > -1) {
+                const newBalance = copy[idx].balance - log.qty;
+                if (newBalance < 0) throw new Error("Невозможно удалить приход: на складе останется отрицательное количество товара.");
+                copy[idx] = { ...copy[idx], balance: newBalance };
+              }
+            } 
+            
+            else if (log.type === "Отгрузка" || log.type === "Списание") {
+              // При удалении расхода мы должны вернуть количество на склад
+              if (idx > -1) {
+                copy[idx] = { ...copy[idx], balance: copy[idx].balance + log.qty };
+              } else {
+                copy.push({ id: Date.now(), itemId: log.itemId, warehouseId: log.warehouseId, balance: log.qty });
+              }
+            }
+
+            else if (log.type === "Перемещение") {
+              // Возвращаем на источник
+              const srcIdx = copy.findIndex(sb => sb.itemId === log.itemId && sb.warehouseId === log.sourceWarehouseId);
+              if (srcIdx > -1) {
+                copy[srcIdx] = { ...copy[srcIdx], balance: copy[srcIdx].balance + log.qty };
+              } else {
+                copy.push({ id: Date.now() + 1, itemId: log.itemId, warehouseId: log.sourceWarehouseId, balance: log.qty });
+              }
+              // Списываем с получателя
+              if (idx > -1) {
+                const newDestBal = copy[idx].balance - log.qty;
+                if (newDestBal < 0) throw new Error("Невозможно отменить перемещение: на складе-получателе товар уже израсходован.");
+                copy[idx] = { ...copy[idx], balance: newDestBal };
+              }
+            }
+
+            return copy;
+          });
+
+          setInventoryLogs(prev => prev.filter(l => l.id !== id));
+          showToast("Операция успешно аннулирована!");
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      };
+
+      // --- ИНВЕНТАРИЗАЦИЯ ---
+      const handleOpenInventory = (whId) => {
+        const wh = Number(whId);
+        const itemsWithBalances = items.map(item => {
+          const balanceRecord = stockBalances.find(sb => sb.itemId === item.id && sb.warehouseId === wh);
+          const currentBalance = balanceRecord ? balanceRecord.balance : 0;
+          return {
+            itemId: item.id,
+            sku: item.sku,
+            name: item.name,
+            currentBalance: currentBalance,
+            actualBalance: currentBalance, 
+            diff: 0
+          };
+        });
+
+        setInventoryForm({
+          warehouseId: wh,
+          items: itemsWithBalances
+        });
+        setShowInventoryModal(true);
+      };
+
+      const handleActualBalanceChange = (itemId, val) => {
+        const actual = Number(val) || 0;
+        setInventoryForm(prev => {
+          const updatedItems = prev.items.map(item => {
+            if (item.itemId === itemId) {
+              return {
+                ...item,
+                actualBalance: actual,
+                diff: actual - item.currentBalance
+              };
+            }
+            return item;
+          });
+          return { ...prev, items: updatedItems };
+        });
+      };
+
+      const handleCommitInventory = () => {
+        const wh = inventoryForm.warehouseId;
+        const corrections = inventoryForm.items.filter(i => i.diff !== 0);
+
+        if (corrections.length === 0) {
+          showToast("Расхождений не обнаружено. Сверка прошла успешно!");
+          setShowInventoryModal(false);
+          return;
+        }
+
+        setStockBalances(prev => {
+          let copy = [...prev];
+          inventoryForm.items.forEach(item => {
+            const idx = copy.findIndex(sb => sb.itemId === item.itemId && sb.warehouseId === wh);
+            if (idx > -1) {
+              copy[idx] = { ...copy[idx], balance: item.actualBalance };
+            } else if (item.actualBalance > 0) {
+              copy.push({ id: Date.now() + item.itemId, itemId: item.itemId, warehouseId: wh, balance: item.actualBalance });
+            }
+          });
+          return copy;
+        });
+
+        corrections.forEach(corr => {
+          const isSurplus = corr.diff > 0; 
+          const logId = inventoryLogs.length > 0 ? Math.max(...inventoryLogs.map(l => l.id)) + 1 : Date.now();
+          setInventoryLogs(prev => [
+            {
+              id: logId,
+              timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+              type: isSurplus ? "Поступление" : "Списание",
+              itemId: corr.itemId,
+              qty: Math.abs(corr.diff),
+              price: 0,
+              warehouseId: wh,
+              counterparty: isSurplus ? "Инвентаризация (Излишек)" : "Инвентаризация (Недостача)",
+              user: currentUser.name
+            },
+            ...prev
+          ]);
+        });
+
+        showToast(`Инвентаризация завершена. Проведено корректировок: ${corrections.length}`);
+        setShowInventoryModal(false);
+      };
+
+      // --- EXCEL ЭКСПОРТ/ИМПОРТ ---
+      const handleExportToExcel = () => {
+        try {
+          const dataToExport = items.map(item => {
+            const row = {
+              "Артикул": item.sku,
+              "Наименование": item.name,
+              "Ед. изм.": item.unit,
+              "Мин. остаток": item.minStock
+            };
+            warehouses.forEach(wh => {
+              const bal = stockBalances.find(sb => sb.itemId === item.id && sb.warehouseId === wh.id);
+              row[wh.name] = bal ? bal.balance : 0;
+            });
+            const total = stockBalances.filter(sb => sb.itemId === item.id).reduce((sum, curr) => sum + curr.balance, 0);
+            row["Всего на складах"] = total;
+            row["Критический статус"] = total < item.minStock ? "ТРЕБУЕТСЯ ЗАКУПКА" : "В норме";
+            return row;
+          });
+
+          const ws = XLSX.utils.json_to_sheet(dataToExport);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Остатки товаров");
+          XLSX.writeFile(wb, "Sklad_Vektor_Ostatki.xlsx");
+          showToast("Файл Склад_Вектор_Остатки.xlsx успешно сгенерирован и скачан!");
+        } catch (e) {
+          showToast("Ошибка при экспорте Excel", "error");
+        }
+      };
+
+      const handleImportExcel = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const data = evt.target.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const excelRows = XLSX.utils.sheet_to_json(sheet);
+
+            if (excelRows.length === 0) {
+              showToast("Файл пуст или некорректен", "error");
+              return;
+            }
+
+            let addedCount = 0;
+            let updatedCount = 0;
+            const updatedItems = [...items];
+
+            excelRows.forEach(row => {
+              const sku = row["Артикул"];
+              const name = row["Наименование"];
+              const unit = row["Ед. изм."] || "шт";
+              const minStock = Number(row["Мин. остаток"]) || 10;
+
+              if (sku && name) {
+                const existingIdx = updatedItems.findIndex(i => i.sku.toLowerCase() === String(sku).toLowerCase());
+                if (existingIdx > -1) {
+                  updatedItems[existingIdx] = { ...updatedItems[existingIdx], name, unit, minStock };
+                  updatedCount++;
+                } else {
+                  const newId = updatedItems.length > 0 ? Math.max(...updatedItems.map(i => i.id)) + 1 : 1;
+                  updatedItems.push({
+                    id: newId,
+                    sku: String(sku),
+                    name: String(name),
+                    categoryId: 1, 
+                    unit: String(unit),
+                    minStock: minStock
+                  });
+                  addedCount++;
+                }
+              }
+            });
+
+            setItems(updatedItems);
+            showToast(`Успешный импорт: добавлено ${addedCount} товаров, обновлено ${updatedCount}`);
+          } catch (err) {
+            showToast("Ошибка чтения файла Excel. Проверьте формат.", "error");
+          }
+        };
+        reader.readAsBinaryString(file);
+      };
+
+      // --- ПОИСК И ФИЛЬТРАЦИЯ ---
+      const filteredStockItems = useMemo(() => {
+        return items.filter(item => {
+          const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                item.sku.toLowerCase().includes(searchQuery.toLowerCase());
+          return matchesSearch;
+        });
+      }, [items, searchQuery]);
+
+      // --- ОТЧЕТ ПО ОБОРАЧИВАЕМОСТИ ---
+      const turnoverData = useMemo(() => {
+        return items.map(item => {
+          const shipments = inventoryLogs.filter(l => l.itemId === item.id && l.type === "Отгрузка");
+          const totalShipped = shipments.reduce((sum, curr) => sum + curr.qty, 0);
+
+          const receipts = inventoryLogs.filter(l => l.itemId === item.id && l.type === "Поступление");
+          const totalReceived = receipts.reduce((sum, curr) => sum + curr.qty, 0);
+
+          const currentBal = stockBalances.filter(sb => sb.itemId === item.id).reduce((sum, curr) => sum + curr.balance, 0);
+          const avgStock = Math.max(1, Math.round((totalReceived + currentBal) / 2));
+
+          const turnoverRatio = (totalShipped / avgStock).toFixed(2);
+          
+          let status = "Оптимальная";
+          if (Number(turnoverRatio) < 0.2 && totalShipped === 0) status = "Товар без движения";
+          else if (Number(turnoverRatio) < 0.5) status = "Низкая оборачиваемость";
+          else if (Number(turnoverRatio) > 2) status = "Высокий спрос (Риск дефицита)";
+
+          return {
+            ...item,
+            totalShipped,
+            avgStock,
+            turnoverRatio,
+            status
+          };
+        });
+      }, [items, inventoryLogs, stockBalances]);
+
+      useEffect(() => {
+        if (activeTab === "reports") {
+          const ctx = document.getElementById('turnoverChart');
+          if (ctx) {
+            const existingChart = Chart.getChart(ctx);
+            if (existingChart) existingChart.destroy();
+
+            new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels: turnoverData.map(t => t.sku),
+                datasets: [
+                  {
+                    label: 'Отгружено (ед.)',
+                    data: turnoverData.map(t => t.totalShipped),
+                    backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                  },
+                  {
+                    label: 'Текущий остаток',
+                    data: turnoverData.map(t => {
+                      return stockBalances.filter(sb => sb.itemId === t.id).reduce((sum, curr) => sum + curr.balance, 0);
+                    }),
+                    backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                plugins: {
+                  legend: { position: 'top' },
+                  title: { display: true, text: 'Соотношение отгрузок и остатков по артикулам' }
+                }
+              }
+            });
+          }
+        }
+      }, [activeTab, turnoverData, stockBalances]);
+
+      // --- СТРАНИЦА ВХОДА (С вводом логина и пароля) ---
+      if (!currentUser) {
+        return (
+          <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-slate-50">
+            <div className="sm:mx-auto sm:w-full sm:max-w-md">
+              <div className="flex justify-center text-primary">
+                <i data-lucide="package" className="w-12 h-12 stroke-primary fill-primary/10"></i>
+              </div>
+              <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900">
+                Складской Комплекс «ВЕКТОР»
+              </h2>
+              <p className="mt-2 text-center text-sm text-slate-600">
+                Автоматизированная система управления складом (WMS)
+              </p>
+            </div>
+
+            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+              <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-200">
+                <form className="space-y-6" onSubmit={handleLogin}>
+                  <div>
+                    <label htmlFor="username" className="block text-sm font-medium text-slate-700">
+                      Имя пользователя
+                    </label>
+                    <div className="mt-1">
+                      <input
+                        id="username"
+                        name="username"
+                        type="text"
+                        required
+                        placeholder="Введите admin или manager1"
+                        value={loginUsername}
+                        onChange={(e) => setLoginUsername(e.target.value)}
+                        className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                      Пароль
+                    </label>
+                    <div className="mt-1">
+                      <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        required
+                        placeholder="••••••••"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-md bg-slate-50 p-4 border border-slate-200">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <i data-lucide="info" className="h-5 w-5 text-blue-500"></i>
+                      </div>
+                      <div className="ml-3 flex-1 md:flex md:justify-between">
+                        <p className="text-xs text-slate-600">
+                          <strong>Тестовые доступы:</strong><br />
+                          • Администратор: <code className="bg-slate-200 px-1 rounded">admin</code> / пароль: <code className="bg-slate-200 px-1 rounded">admin</code><br />
+                          • Менеджер: <code className="bg-slate-200 px-1 rounded">manager1</code> / пароль: <code className="bg-slate-200 px-1 rounded">manager1</code>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <button
+                      type="submit"
+                      className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all"
+                    >
+                      Войти в систему
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <div className="mt-4 text-center">
+                <button 
+                  onClick={handleAutoLogin} 
+                  className="text-xs text-primary underline hover:text-blue-700 font-medium"
+                >
+                  Демо-вход как Администратор без ввода пароля
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      setTimeout(() => {
+        if (typeof lucide !== 'undefined') {
+          lucide.createIcons();
+        }
+      }, 50);
+
+      return (
+        <div className="flex-1 flex flex-col">
+          {/* --- ХЕДЕР ПРИЛОЖЕНИЯ --- */}
+          <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between h-16">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0 flex items-center gap-2">
+                    <i data-lucide="package" className="w-8 h-8 text-primary"></i>
+                    <span className="font-bold text-xl text-slate-800 tracking-tight">ВЕКТОР</span>
+                    <span className="text-xs bg-primary/10 text-primary font-medium px-2 py-0.5 rounded-full">Склад v2.6</span>
+                  </div>
+                  {/* Главное горизонтальное меню */}
+                  <nav className="hidden md:ml-8 md:flex md:space-x-4">
+                    <button
+                      onClick={() => setActiveTab("dashboard")}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'dashboard' ? 'bg-primary text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      Главная панель
+                    </button>
+                    <button
+                      onClick={() => { setActiveTab("items"); setSearchQuery(""); }}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'items' ? 'bg-primary text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      Каталог товаров
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("actions")}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'actions' ? 'bg-primary text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      Складские операции
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("counterparties")}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'counterparties' ? 'bg-primary text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      Контрагенты
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("warehouses")}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'warehouses' ? 'bg-primary text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      Редактор складов
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("reports")}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'reports' ? 'bg-primary text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      Аналитика & Оборачиваемость
+                    </button>
+                  </nav>
+                </div>
+                <div className="flex items-center gap-4">
+                  {currentUser.role === "Admin" && (
+                    <button 
+                      onClick={() => setActiveTab("users")} 
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1 ${activeTab === 'users' ? 'bg-red-600 text-white border-red-600' : 'text-red-600 border-red-200 hover:bg-red-50'}`}
+                    >
+                      <i data-lucide="users" className="w-3.5 h-3.5"></i> Сотрудники
+                    </button>
+                  )}
+                  <div className="text-right hidden sm:block">
+                    <p className="text-sm font-semibold text-slate-900">{currentUser.name}</p>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${currentUser.role === 'Admin' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                      {currentUser.role === 'Admin' ? 'Администратор' : 'Сотрудник склада'}
+                    </span>
+                  </div>
+
+                  <div className="h-8 w-px bg-slate-200"></div>
+
+                  <button
+                    onClick={handleLogout}
+                    className="p-2 text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-full transition-all"
+                    title="Выйти из системы"
+                  >
+                    <i data-lucide="log-out" className="w-5 h-5"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* --- ТОСТ-УВЕДОМЛЕНИЕ --- */}
+          {toast && (
+            <div className="fixed top-4 right-4 z-[9999] flex items-center p-4 mb-4 rounded-lg shadow-lg border bg-white transition-all transform translate-y-0" role="alert">
+              <div className={`inline-flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg ${toast.type === 'error' ? 'bg-red-100 text-red-500' : 'bg-green-100 text-green-500'}`}>
+                <i data-lucide={toast.type === 'error' ? 'x-circle' : 'check-circle'} className="w-5 h-5"></i>
+              </div>
+              <div className="ml-3 text-sm font-normal text-slate-700">{toast.message}</div>
+            </div>
+          )}
+
+          {/* --- КРИТИЧЕСКИЕ ПРЕДУПРЕЖДЕНИЯ --- */}
+          {lowStockAlerts.length > 0 && (
+            <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-amber-800 text-xs sm:text-sm">
+              <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <i data-lucide="alert-triangle" className="w-4 h-4 text-amber-600"></i>
+                  <span>⚠️ <strong>Внимание!</strong> {lowStockAlerts.length} товар(а) находятся ниже минимального остатка на складах.</span>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => { setActiveTab("items"); setSearchQuery(lowStockAlerts[0].sku); }} 
+                    className="underline font-semibold hover:text-amber-950"
+                  >
+                    Показать дефицитные товары
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- ГЛАВНЫЙ КОНТЕНТ --- */}
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+            
+            {/* 1. ГЛАВНАЯ ПАНЕЛЬ (DASHBOARD) */}
+            {activeTab === "dashboard" && (
+              <div className="space-y-6">
+                
+                {/* Реальное время: Поиск по остаткам на складах */}
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2 flex items-center gap-2">
+                    <i data-lucide="search" className="text-primary w-5 h-5"></i>
+                    Поиск по остаткам на складах в реальном времени
+                  </h3>
+                  <p className="text-sm text-slate-500 mb-4">
+                    Начните вводить артикул или название товара, чтобы увидеть распределение по складам прямо сейчас.
+                  </p>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Быстрый поиск (например: SKU-001 или Лампа)..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full px-4 py-3 pl-11 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-base"
+                    />
+                    <div className="absolute left-4 top-3.5 text-slate-400">
+                      <i data-lucide="search" className="w-5 h-5"></i>
+                    </div>
+                  </div>
+
+                  {searchQuery && (
+                    <div className="mt-4 border border-slate-200 rounded-lg overflow-hidden max-h-80 overflow-y-auto">
+                      <table className="min-w-full divide-y divide-slate-200">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Артикул</th>
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Наименование</th>
+                            <th className="px-4 py-2 text-center text-xs font-semibold text-slate-500">Ед. изм.</th>
+                            {warehouses.map(wh => (
+                              <th key={wh.id} className="px-4 py-2 text-center text-xs font-semibold text-slate-500">{wh.name}</th>
+                            ))}
+                            <th className="px-4 py-2 text-center text-xs font-semibold text-slate-500 bg-blue-50/50">Итого</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {filteredStockItems.map(item => {
+                            const total = stockBalances.filter(sb => sb.itemId === item.id).reduce((sum, curr) => sum + curr.balance, 0);
+                            return (
+                              <tr key={item.id} className="hover:bg-slate-50/50 text-sm">
+                                <td className="px-4 py-2 font-mono font-medium text-xs text-blue-600">{item.sku}</td>
+                                <td className="px-4 py-2 font-medium">{item.name}</td>
+                                <td className="px-4 py-2 text-center text-slate-500">{item.unit}</td>
+                                {warehouses.map(wh => {
+                                  const bal = stockBalances.find(sb => sb.itemId === item.id && sb.warehouseId === wh.id);
+                                  return (
+                                    <td key={wh.id} className="px-4 py-2 text-center font-medium">
+                                      {bal && bal.balance > 0 ? (
+                                        <span className="text-slate-800">{bal.balance}</span>
+                                      ) : (
+                                        <span className="text-slate-300">-</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                                <td className="px-4 py-2 text-center font-bold bg-blue-50/30">
+                                  <span className={total < item.minStock ? 'text-red-600 bg-red-50 px-2 py-1 rounded' : 'text-slate-900'}>
+                                    {total}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {filteredStockItems.length === 0 && (
+                            <tr>
+                              <td colSpan={4 + warehouses.length} className="px-4 py-8 text-center text-slate-400">
+                                Товаров по вашему запросу не найдено
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Быстрая статистика */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Всего номенклатур</span>
+                      <h4 className="text-2xl font-bold mt-1 text-slate-800">{items.length}</h4>
+                    </div>
+                    <div className="bg-blue-50 p-3 rounded-lg text-primary">
+                      <i data-lucide="tag" className="w-6 h-6"></i>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Всего складов</span>
+                      <h4 className="text-2xl font-bold mt-1 text-slate-800">{warehouses.length}</h4>
+                    </div>
+                    <div className="bg-purple-50 p-3 rounded-lg text-purple-600">
+                      <i data-lucide="home" className="w-6 h-6"></i>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Дефицит на складах</span>
+                      <h4 className="text-2xl font-bold mt-1 text-red-600">{lowStockAlerts.length} шт</h4>
+                    </div>
+                    <div className="bg-red-50 p-3 rounded-lg text-red-600">
+                      <i data-lucide="alert-triangle" className="w-6 h-6"></i>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Всего операций</span>
+                      <h4 className="text-2xl font-bold mt-1 text-green-600">{inventoryLogs.length}</h4>
+                    </div>
+                    <div className="bg-green-50 p-3 rounded-lg text-green-600">
+                      <i data-lucide="refresh-cw" className="w-6 h-6"></i>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Раздел быстрого создания документов */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">Быстрые складские документы</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        onClick={() => { setOpType("Поступление"); setShowOpModal(true); }}
+                        className="p-4 border border-slate-200 rounded-lg text-left hover:border-blue-500 hover:bg-blue-50/50 transition-all group"
+                      >
+                        <i data-lucide="arrow-down-left" className="w-6 h-6 text-green-600 mb-2 group-hover:scale-110 transition-transform"></i>
+                        <span className="block font-medium text-slate-800">Поступление</span>
+                        <span className="text-xs text-slate-500">Принять товар от поставщика</span>
+                      </button>
+
+                      <button
+                        onClick={() => { setOpType("Отгрузка"); setShowOpModal(true); }}
+                        className="p-4 border border-slate-200 rounded-lg text-left hover:border-blue-500 hover:bg-blue-50/50 transition-all group"
+                      >
+                        <i data-lucide="arrow-up-right" className="w-6 h-6 text-red-600 mb-2 group-hover:scale-110 transition-transform"></i>
+                        <span className="block font-medium text-slate-800">Отгрузка</span>
+                        <span className="text-xs text-slate-500">Списать товар покупателю</span>
+                      </button>
+
+                      <button
+                        onClick={() => { setOpType("Перемещение"); setShowOpModal(true); }}
+                        className="p-4 border border-slate-200 rounded-lg text-left hover:border-blue-500 hover:bg-blue-50/50 transition-all group"
+                      >
+                        <i data-lucide="move" className="w-6 h-6 text-blue-600 mb-2 group-hover:scale-110 transition-transform"></i>
+                        <span className="block font-medium text-slate-800">Перемещение</span>
+                        <span className="text-xs text-slate-500">Между складами комплекса</span>
+                      </button>
+
+                      <button
+                        onClick={() => { setOpType("Списание"); setShowOpModal(true); }}
+                        className="p-4 border border-slate-200 rounded-lg text-left hover:border-blue-500 hover:bg-blue-50/50 transition-all group"
+                      >
+                        <i data-lucide="trash-2" className="w-6 h-6 text-amber-600 mb-2 group-hover:scale-110 transition-transform"></i>
+                        <span className="block font-medium text-slate-800">Списание</span>
+                        <span className="text-xs text-slate-500">Брак, утеря, инвентаризация</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Сверка остатков (Инвентаризация) */}
+                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-800 mb-2 flex items-center gap-2">
+                        <i data-lucide="clipboard-check" className="text-green-600 w-5 h-5"></i>
+                        Инвентаризация складов
+                      </h3>
+                      <p className="text-sm text-slate-500 mb-4">
+                        Выберите склад, чтобы сверить фактическое наличие товара с учетными записями в базе данных и автоматически скорректировать остатки.
+                      </p>
+                      <div className="space-y-2">
+                        {warehouses.map(wh => (
+                          <div key={wh.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-all">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{wh.name}</p>
+                              <p className="text-xs text-slate-500">{wh.address}</p>
+                            </div>
+                            <button
+                              onClick={() => handleOpenInventory(wh.id)}
+                              className="bg-success text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-green-700 transition-all flex items-center gap-1"
+                            >
+                              <i data-lucide="check" className="w-3.5 h-3.5"></i> Начать сверку
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Последние движения товаров */}
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold text-slate-800">Последние складские логи</h3>
+                    <button onClick={() => setActiveTab("actions")} className="text-xs text-primary font-medium hover:underline">
+                      Все логи движения товара →
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Время</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Операция</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Товар</th>
+                          <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Кол-во</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Склад</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Контрагент</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Исполнитель</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-sm bg-white">
+                        {inventoryLogs.slice(0, 5).map(log => {
+                          const item = items.find(i => i.id === log.itemId);
+                          const wh = warehouses.find(w => w.id === log.warehouseId);
+                          const srcWh = log.sourceWarehouseId ? warehouses.find(w => w.id === log.sourceWarehouseId) : null;
+                          return (
+                            <tr key={log.id} className="hover:bg-slate-50/50">
+                              <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{log.timestamp}</td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${
+                                  log.type === 'Поступление' ? 'bg-green-100 text-green-800' :
+                                  log.type === 'Отгрузка' ? 'bg-red-100 text-red-800' :
+                                  log.type === 'Перемещение' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'
+                                }`}>
+                                  {log.type}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 font-medium text-slate-800">
+                                {item ? `${item.name} (${item.sku})` : 'Удаленный товар'}
+                              </td>
+                              <td className="px-6 py-4 text-center font-bold">
+                                {log.qty} {item?.unit}
+                              </td>
+                              <td className="px-6 py-4 text-slate-700">
+                                {srcWh ? `${srcWh.name} ➔ ${wh?.name}` : wh?.name}
+                              </td>
+                              <td className="px-6 py-4 text-slate-600">{log.counterparty}</td>
+                              <td className="px-6 py-4 text-xs text-slate-500">{log.user}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* 2. КАТАЛОГ ТОВАРОВ */}
+            {activeTab === "items" && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900">Номенклатурный справочник товаров</h2>
+                    <p className="text-sm text-slate-500">Управляйте каталогом продукции, категориями и минимальными остатками.</p>
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={() => { setItemForm({ id: null, sku: "", name: "", categoryId: 1, unit: "шт", minStock: 10 }); setShowNewItemModal(true); }}
+                      className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all flex items-center gap-1.5 shadow-sm"
+                    >
+                      <i data-lucide="plus" className="w-4 h-4"></i> Добавить товар
+                    </button>
+                    <button
+                      onClick={() => { setCategoryForm({ id: null, name: "" }); setShowNewCategoryModal(true); }}
+                      className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-200 transition-all flex items-center gap-1.5"
+                    >
+                      <i data-lucide="folder-plus" className="w-4 h-4"></i> Категории
+                    </button>
+                  </div>
+                </div>
+
+                {/* Панель фильтрации */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+                  <div className="relative w-full md:max-w-md">
+                    <input
+                      type="text"
+                      placeholder="Быстрый поиск по каталогу..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full px-4 py-2 pl-10 border border-slate-300 rounded-md focus:ring-primary focus:border-primary text-sm"
+                    />
+                    <div className="absolute left-3.5 top-3 text-slate-400">
+                      <i data-lucide="search" className="w-4 h-4"></i>
+                    </div>
+                  </div>
+
+                  {/* Excel */}
+                  <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                    <button
+                      onClick={handleExportToExcel}
+                      className="bg-green-50 text-success border border-green-200 px-3.5 py-2 rounded-md text-xs font-semibold hover:bg-green-100 transition-all flex items-center gap-1.5"
+                    >
+                      <i data-lucide="download" className="w-4 h-4"></i> Экспорт Excel
+                    </button>
+                    <label className="cursor-pointer bg-slate-50 text-slate-700 border border-slate-200 px-3.5 py-2 rounded-md text-xs font-semibold hover:bg-slate-100 transition-all flex items-center gap-1.5">
+                      <i data-lucide="upload" className="w-4 h-4"></i> Импорт Excel
+                      <input
+                        type="file"
+                        accept=".xlsx, .xls"
+                        onChange={handleImportExcel}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Артикул</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Название товара</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Категория</th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Ед. изм.</th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Мин. остаток</th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Текущий остаток</th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white text-sm">
+                      {filteredStockItems.map(item => {
+                        const cat = categories.find(c => c.id === item.categoryId);
+                        const totalBal = stockBalances.filter(sb => sb.itemId === item.id).reduce((sum, curr) => sum + curr.balance, 0);
+                        const isUnderStock = totalBal < item.minStock;
+
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50">
+                            <td className="px-6 py-4 whitespace-nowrap font-mono font-bold text-blue-600 text-xs">{item.sku}</td>
+                            <td className="px-6 py-4 font-semibold text-slate-900">{item.name}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="inline-flex px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-800">
+                                {cat ? cat.name : 'Без категории'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center text-slate-500">{item.unit}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center font-semibold">{item.minStock}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold ${isUnderStock ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                                {totalBal} {item.unit}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-medium">
+                              <button
+                                onClick={() => { setItemForm(item); setShowNewItemModal(true); }}
+                                className="text-primary hover:text-blue-900 mr-3"
+                              >
+                                Редактировать
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Список категорий */}
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm max-w-xl">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4">Существующие категории</h3>
+                  <div className="space-y-2">
+                    {categories.map(cat => (
+                      <div key={cat.id} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg">
+                        <span className="text-sm font-semibold">{cat.name}</span>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => { setCategoryForm(cat); setShowNewCategoryModal(true); }}
+                            className="text-xs text-blue-600 hover:underline animate-none"
+                          >
+                            Ред.
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(cat.id)}
+                            className="text-xs text-red-600 hover:underline animate-none"
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* 3. СКЛАДСКИЕ ОПЕРАЦИИ (Редактируемые администратором) */}
+            {activeTab === "actions" && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900">Журнал всех складских операций</h2>
+                    <p className="text-sm text-slate-500">История движения товаров. Администраторам доступно редактирование и удаление операций.</p>
+                  </div>
+                  <button
+                    onClick={() => { setOpType("Поступление"); setShowOpModal(true); }}
+                    className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all flex items-center gap-1.5"
+                  >
+                    <i data-lucide="plus" className="w-4 h-4"></i> Оформить операцию
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Дата/Время</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Тип</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Артикул / Товар</th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Кол-во</th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Цена (руб)</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Склад</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Контрагент</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Кто оформил</th>
+                        {currentUser.role === "Admin" && (
+                          <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Действия</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-sm bg-white">
+                      {inventoryLogs.map(log => {
+                        const item = items.find(i => i.id === log.itemId);
+                        const wh = warehouses.find(w => w.id === log.warehouseId);
+                        const srcWh = log.sourceWarehouseId ? warehouses.find(w => w.id === log.sourceWarehouseId) : null;
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-50">
+                            <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{log.timestamp}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${
+                                log.type === 'Поступление' ? 'bg-green-100 text-green-800' :
+                                log.type === 'Отгрузка' ? 'bg-red-100 text-red-800' :
+                                log.type === 'Перемещение' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'
+                              }`}>
+                                {log.type}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="font-semibold text-slate-950">{item ? item.name : 'Удаленный товар'}</div>
+                              <div className="text-xs font-mono text-blue-600">{item ? item.sku : ''}</div>
+                            </td>
+                            <td className="px-6 py-4 text-center font-bold">{log.qty} {item?.unit}</td>
+                            <td className="px-6 py-4 text-center text-slate-600">{log.price > 0 ? `${log.price} ₽` : '-'}</td>
+                            <td className="px-6 py-4 text-slate-700">
+                              {srcWh ? (
+                                <span className="flex items-center gap-1">
+                                  <span className="text-red-600">{srcWh.name}</span>
+                                  <span>➔</span>
+                                  <span className="text-green-600">{wh?.name}</span>
+                                </span>
+                              ) : (
+                                <span>{wh?.name}</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-slate-600 font-medium">{log.counterparty}</td>
+                            <td className="px-6 py-4 text-xs text-slate-500">{log.user}</td>
+                            {currentUser.role === "Admin" && (
+                              <td className="px-6 py-4 text-right whitespace-nowrap text-xs font-medium space-x-2">
+                                <button
+                                  onClick={() => { setEditingOp({ ...log }); setShowEditOpModal(true); }}
+                                  className="text-primary hover:text-blue-900"
+                                >
+                                  Ред.
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm("Вы действительно хотите удалить эту операцию и скорректировать остатки на складе?")) {
+                                      handleDeleteOperation(log.id);
+                                    }
+                                  }}
+                                  className="text-red-600 hover:text-red-900"
+                                >
+                                  Аннулировать
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 4. КОНТРАГЕНТЫ */}
+            {activeTab === "counterparties" && (
+              <div className="space-y-6">
+                
+                {/* Раздел поставщиков */}
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900">Каталог поставщиков</h3>
+                      <p className="text-xs text-slate-500">Компании, у которых осуществляется закупка товаров.</p>
+                    </div>
+                    <button
+                      onClick={() => { setCounterpartyForm({ id: null, type: "seller", name: "", contact: "", phone: "", email: "" }); setShowNewSellerModal(true); }}
+                      className="bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-all flex items-center gap-1"
+                    >
+                      <i data-lucide="plus" className="w-3.5 h-3.5"></i> Добавить поставщикa
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Наименование</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Контактное лицо</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Телефон</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Email</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {sellers.map(s => (
+                          <tr key={s.id}>
+                            <td className="px-4 py-3 font-semibold text-slate-900">{s.name}</td>
+                            <td className="px-4 py-3 text-slate-600">{s.contact}</td>
+                            <td className="px-4 py-3 text-slate-600 font-mono text-xs">{s.phone}</td>
+                            <td className="px-4 py-3 text-slate-600 font-mono text-xs">{s.email}</td>
+                            <td className="px-4 py-3 text-right text-xs">
+                              <button onClick={() => { setCounterpartyForm({ ...s, type: 'seller' }); setShowNewSellerModal(true); }} className="text-blue-600 hover:underline mr-2">Ред.</button>
+                              <button onClick={() => handleDeleteCounterparty('seller', s.id)} className="text-red-600 hover:underline">Удалить</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Раздел покупателей */}
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900">Каталог покупателей (Клиентов)</h3>
+                      <p className="text-xs text-slate-500">Компании и ИП, которым отгружаются товары со складов.</p>
+                    </div>
+                    <button
+                      onClick={() => { setCounterpartyForm({ id: null, type: "client", name: "", contact: "", phone: "", email: "" }); setShowNewClientModal(true); }}
+                      className="bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-all flex items-center gap-1"
+                    >
+                      <i data-lucide="plus" className="w-3.5 h-3.5"></i> Добавить покупателя
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Наименование</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Контактное лицо</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Телефон</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Email</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {clients.map(c => (
+                          <tr key={c.id}>
+                            <td className="px-4 py-3 font-semibold text-slate-900">{c.name}</td>
+                            <td className="px-4 py-3 text-slate-600">{c.contact}</td>
+                            <td className="px-4 py-3 text-slate-600 font-mono text-xs">{c.phone}</td>
+                            <td className="px-4 py-3 text-slate-600 font-mono text-xs">{c.email}</td>
+                            <td className="px-4 py-3 text-right text-xs">
+                              <button onClick={() => { setCounterpartyForm({ ...c, type: 'client' }); setShowNewClientModal(true); }} className="text-blue-600 hover:underline mr-2">Ред.</button>
+                              <button onClick={() => handleDeleteCounterparty('client', c.id)} className="text-red-600 hover:underline">Удалить</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* 5. РЕДАКТОР СКЛАДОВ */}
+            {activeTab === "warehouses" && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900">Редактор складских площадей</h2>
+                    <p className="text-sm text-slate-500">Добавление, изменение адресов и удаление складов системы.</p>
+                  </div>
+                  <button
+                    onClick={() => { setWarehouseForm({ id: null, name: "", address: "" }); setShowNewWarehouseModal(true); }}
+                    className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all flex items-center gap-1.5"
+                  >
+                    <i data-lucide="plus" className="w-4 h-4"></i> Добавить склад
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {warehouses.map(wh => {
+                    const uniqueItemsCount = stockBalances.filter(sb => sb.warehouseId === wh.id && sb.balance > 0).length;
+                    const totalUnitsCount = stockBalances.filter(sb => sb.warehouseId === wh.id).reduce((sum, curr) => sum + curr.balance, 0);
+
+                    return (
+                      <div key={wh.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between hover:border-slate-300 transition-all">
+                        <div>
+                          <div className="flex justify-between items-start">
+                            <div className="bg-blue-50 text-primary p-3 rounded-lg">
+                              <i data-lucide="home" className="w-6 h-6"></i>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => { setWarehouseForm(wh); setShowNewWarehouseModal(true); }} className="text-xs text-blue-600 hover:underline">Ред.</button>
+                              <button onClick={() => handleDeleteWarehouse(wh.id)} className="text-xs text-red-600 hover:underline">Удалить</button>
+                            </div>
+                          </div>
+                          <h3 className="text-lg font-bold text-slate-900 mt-4">{wh.name}</h3>
+                          <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                            <i data-lucide="map-pin" className="w-3.5 h-3.5"></i> {wh.address}
+                          </p>
+                        </div>
+
+                        <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+                          <div>
+                            <span className="block font-semibold text-slate-800 text-sm">{uniqueItemsCount}</span>
+                            уникальных товаров
+                          </div>
+                          <div className="text-right">
+                            <span className="block font-semibold text-slate-800 text-sm">{totalUnitsCount} ед.</span>
+                            суммарный остаток
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 6. АНАЛИТИКА */}
+            {activeTab === "reports" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">Интеллектуальный отчет оборачиваемости товаров</h2>
+                  <p className="text-sm text-slate-500">Коэффициент оборачиваемости характеризует скорость реализации складских остатков.</p>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <canvas id="turnoverChart" className="w-full h-80"></canvas>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <h3 className="font-bold text-slate-800">Показатели оборачиваемости (Расчет по формуле: Отгружено / Средний товарный запас)</h3>
+                  </div>
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Артикул</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Товар</th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Отгружено</th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Средний запас</th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Коэф. Оборачиваемости</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Статус спроса</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {turnoverData.map(t => (
+                        <tr key={t.id} className="hover:bg-slate-50">
+                          <td className="px-6 py-4 font-mono font-semibold text-blue-600 text-xs">{t.sku}</td>
+                          <td className="px-6 py-4 font-semibold text-slate-900">{t.name}</td>
+                          <td className="px-6 py-4 text-center font-bold text-red-600">{t.totalShipped} {t.unit}</td>
+                          <td className="px-6 py-4 text-center text-slate-600">{t.avgStock} {t.unit}</td>
+                          <td className="px-6 py-4 text-center">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                              {t.turnoverRatio}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
+                              t.status.includes('Высокий') ? 'bg-amber-100 text-amber-800' :
+                              t.status.includes('Низкая') ? 'bg-orange-100 text-orange-800' :
+                              t.status.includes('без движения') ? 'bg-slate-100 text-slate-600' : 'bg-green-100 text-green-800'
+                            }`}>
+                              {t.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 7. УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ (ДОСТУПНО ТОЛЬКО АДМИНУ) */}
+            {activeTab === "users" && (
+              <div className="space-y-6">
+                {currentUser.role === "Admin" ? (
+                  <div>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h2 className="text-2xl font-bold text-slate-900">Управление сотрудниками</h2>
+                        <p className="text-sm text-slate-500">Добавление, редактирование ролей и прав доступа персонала.</p>
+                      </div>
+                      <button
+                        onClick={() => { setUserForm({ id: null, name: "", username: "", role: "Manager", email: "", password: "" }); setShowNewUserModal(true); }}
+                        className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition-all flex items-center gap-1.5"
+                      >
+                        <i data-lucide="plus" className="w-4 h-4"></i> Создать сотрудника
+                      </button>
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
+                      <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Имя сотрудника</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Логин (Идентификатор)</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Роль</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Пароль</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Email</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Действия</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 bg-white">
+                          {users.map(u => (
+                            <tr key={u.id} className="hover:bg-slate-50">
+                              <td className="px-6 py-4 font-semibold text-slate-950">{u.name}</td>
+                              <td className="px-6 py-4 font-mono text-xs text-slate-600">{u.username}</td>
+                              <td className="px-6 py-4">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
+                                  u.role === 'Admin' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                                }`}>
+                                  {u.role === 'Admin' ? 'Администратор' : 'Складской менеджер'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 font-mono text-xs text-slate-400 select-all">{u.password}</td>
+                              <td className="px-6 py-4 font-mono text-xs text-slate-500">{u.email}</td>
+                              <td className="px-6 py-4 text-right text-xs font-medium text-red-600">
+                                <button
+                                  onClick={() => { setUserForm(u); setShowNewUserModal(true); }}
+                                  className="text-blue-600 hover:text-blue-900 mr-3"
+                                >
+                                  Редактировать
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteUser(u.id)}
+                                  className="text-red-600 hover:text-red-950"
+                                >
+                                  Удалить
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-red-50 border border-red-200 p-8 rounded-xl text-center">
+                    <i data-lucide="shield-alert" className="w-16 h-16 text-red-600 mx-auto mb-4"></i>
+                    <h2 className="text-xl font-bold text-red-800">Доступ заблокирован</h2>
+                    <p className="text-slate-600 mt-2">Раздел «Управление пользователями» доступен исключительно пользователям с ролью Admin.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+          </main>
+
+          <footer className="bg-white border-t border-slate-200 py-4 mt-auto">
+            <div className="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+              © 2026 Складской Комплекс «Вектор». Все права защищены.
+            </div>
+          </footer>
+
+          {/* ==============================================
+              ОБЩИЕ МОДАЛЬНЫЕ ОКНА И ФОРМЫ
+          ============================================== */}
+
+          {/* А: МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ПОЛЬЗОВАТЕЛЯ */}
+          {showNewUserModal && (
+            <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl border border-slate-200">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {userForm.id ? 'Редактировать сотрудника' : 'Новый сотрудник'}
+                  </h3>
+                  <button onClick={() => setShowNewUserModal(false)} className="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" className="w-5 h-5"></i>
+                  </button>
+                </div>
+                <form onSubmit={handleSaveUser} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">ФИО сотрудника</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Иванов Иван Иванович"
+                      value={userForm.name}
+                      onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Логин</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="ivanov_i"
+                      value={userForm.username}
+                      onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Пароль</label>
+                    <input
+                      type="password"
+                      placeholder={userForm.id ? "Оставьте пустым, чтобы не изменять" : "Введите пароль"}
+                      required={!userForm.id}
+                      value={userForm.password}
+                      onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Эл. почта</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="ivanov@vector.ru"
+                      value={userForm.email}
+                      onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Роль в системе</label>
+                    <select
+                      value={userForm.role}
+                      onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md bg-white shadow-sm focus:ring-primary focus:border-primary"
+                    >
+                      <option value="Manager">Менеджер склада</option>
+                      <option value="Admin">Администратор</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-4">
+                    <button type="button" onClick={() => setShowNewUserModal(false)} className="px-4 py-2 border rounded text-slate-600 hover:bg-slate-50">Отмена</button>
+                    <button type="submit" className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-700">Сохранить</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Б: МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ТОВАРА */}
+          {showNewItemModal && (
+            <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold">{itemForm.id ? 'Редактировать товар' : 'Добавить товар в каталог'}</h3>
+                  <button onClick={() => setShowNewItemModal(false)} className="text-slate-400 hover:text-slate-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+                <form onSubmit={handleSaveItem} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Артикул (SKU)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="SKU-XXXX"
+                      value={itemForm.sku}
+                      onChange={(e) => setItemForm({ ...itemForm, sku: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Наименование товара</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Название"
+                      value={itemForm.name}
+                      onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Категория</label>
+                    <select
+                      value={itemForm.categoryId}
+                      onChange={(e) => setItemForm({ ...itemForm, categoryId: Number(e.target.value) })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md bg-white shadow-sm focus:ring-primary focus:border-primary"
+                    >
+                      {categories.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Единица измерения</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="шт, м, кг, пачка"
+                      value={itemForm.unit}
+                      onChange={(e) => setItemForm({ ...itemForm, unit: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Минимальный остаток</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={itemForm.minStock}
+                      onChange={(e) => setItemForm({ ...itemForm, minStock: Number(e.target.value) })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-4">
+                    <button type="button" onClick={() => setShowNewItemModal(false)} className="px-4 py-2 border rounded text-slate-600 hover:bg-slate-50">Отмена</button>
+                    <button type="submit" className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-700">Сохранить</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* В: МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ КОНТРАГЕНТОВ (ПОСТАВЩИКИ) */}
+          {showNewSellerModal && (
+            <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold">{counterpartyForm.id ? 'Редактировать контрагента' : 'Добавить поставщика'}</h3>
+                  <button onClick={() => setShowNewSellerModal(false)} className="text-slate-400 hover:text-slate-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+                <form onSubmit={handleSaveCounterparty} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Наименование компании</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="ООО Восток"
+                      value={counterpartyForm.name}
+                      onChange={(e) => setCounterpartyForm({ ...counterpartyForm, name: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Контактное лицо</label>
+                    <input
+                      type="text"
+                      value={counterpartyForm.contact}
+                      onChange={(e) => setCounterpartyForm({ ...counterpartyForm, contact: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Телефон</label>
+                    <input
+                      type="text"
+                      value={counterpartyForm.phone}
+                      onChange={(e) => setCounterpartyForm({ ...counterpartyForm, phone: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Email</label>
+                    <input
+                      type="email"
+                      value={counterpartyForm.email}
+                      onChange={(e) => setCounterpartyForm({ ...counterpartyForm, email: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-4">
+                    <button type="button" onClick={() => setShowNewSellerModal(false)} className="px-4 py-2 border rounded text-slate-600 hover:bg-slate-50">Отмена</button>
+                    <button type="submit" className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-700">Сохранить</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Г: МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ПОКУПАТЕЛЕЙ */}
+          {showNewClientModal && (
+            <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold">{counterpartyForm.id ? 'Редактировать покупателя' : 'Добавить покупателя'}</h3>
+                  <button onClick={() => setShowNewClientModal(false)} className="text-slate-400 hover:text-slate-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+                <form onSubmit={handleSaveCounterparty} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Наименование / ФИО</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="ИП Петров"
+                      value={counterpartyForm.name}
+                      onChange={(e) => setCounterpartyForm({ ...counterpartyForm, name: e.target.value, type: "client" })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Контактное лицо</label>
+                    <input
+                      type="text"
+                      value={counterpartyForm.contact}
+                      onChange={(e) => setCounterpartyForm({ ...counterpartyForm, contact: e.target.value, type: "client" })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Телефон</label>
+                    <input
+                      type="text"
+                      value={counterpartyForm.phone}
+                      onChange={(e) => setCounterpartyForm({ ...counterpartyForm, phone: e.target.value, type: "client" })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Email</label>
+                    <input
+                      type="email"
+                      value={counterpartyForm.email}
+                      onChange={(e) => setCounterpartyForm({ ...counterpartyForm, email: e.target.value, type: "client" })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-4">
+                    <button type="button" onClick={() => setShowNewClientModal(false)} className="px-4 py-2 border rounded text-slate-600 hover:bg-slate-50">Отмена</button>
+                    <button type="submit" className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-700">Сохранить</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Д: МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ СКЛАДА */}
+          {showNewWarehouseModal && (
+            <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold">{warehouseForm.id ? 'Редактировать склад' : 'Новый складской сектор'}</h3>
+                  <button onClick={() => setShowNewWarehouseModal(false)} className="text-slate-400 hover:text-slate-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+                <form onSubmit={handleSaveWarehouse} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Название склада</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Напр. Склад Металлопроката"
+                      value={warehouseForm.name}
+                      onChange={(e) => setWarehouseForm({ ...warehouseForm, name: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Физический адрес / Локация</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="г. Подольск, шоссе Рязанское, стр. 5"
+                      value={warehouseForm.address}
+                      onChange={(e) => setWarehouseForm({ ...warehouseForm, address: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-4">
+                    <button type="button" onClick={() => setShowNewWarehouseModal(false)} className="px-4 py-2 border rounded text-slate-600 hover:bg-slate-50">Отмена</button>
+                    <button type="submit" className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-700">Сохранить</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Е: МОДАЛЬНОЕ ОКНО СОЗДАНИЯ КАТЕГОРИИ */}
+          {showNewCategoryModal && (
+            <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg max-w-sm w-full p-6 shadow-xl">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold">{categoryForm.id ? 'Редактировать категорию' : 'Новая товарная категория'}</h3>
+                  <button onClick={() => setShowNewCategoryModal(false)} className="text-slate-400 hover:text-slate-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+                <form onSubmit={handleSaveCategory} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Наименование категории</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Напр. Отделочные материалы"
+                      value={categoryForm.name}
+                      onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-4">
+                    <button type="button" onClick={() => setShowNewCategoryModal(false)} className="px-4 py-2 border rounded text-slate-600 hover:bg-slate-50">Отмена</button>
+                    <button type="submit" className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-700">Создать</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Ж: ГЛАВНОЕ МОДАЛЬНОЕ ОКНО ПРОВЕДЕНИЯ СКЛАДСКИХ ОПЕРАЦИЙ */}
+          {showOpModal && (
+            <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4 overflow-y-auto">
+              <div className="bg-white rounded-lg max-w-lg w-full p-6 shadow-xl my-8">
+                <div className="flex justify-between items-center mb-4 border-b pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-3.5 h-3.5 rounded-full ${
+                      opType === 'Поступление' ? 'bg-green-500' :
+                      opType === 'Отгрузка' ? 'bg-red-500' :
+                      opType === 'Перемещение' ? 'bg-blue-500' : 'bg-amber-500'
+                    }`}></span>
+                    <h3 className="text-lg font-bold text-slate-900">Оформить документ: {opType}</h3>
+                  </div>
+                  <button onClick={() => setShowOpModal(false)} className="text-slate-400 hover:text-slate-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+
+                <form onSubmit={handleCommitOperation} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Товар (Артикул)</label>
+                    <select
+                      required
+                      value={opForm.itemId}
+                      onChange={(e) => setOpForm({ ...opForm, itemId: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md bg-white font-medium shadow-sm focus:ring-primary focus:border-primary"
+                    >
+                      <option value="">-- Выберите товар из каталога --</option>
+                      {items.map(i => (
+                        <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>
+                      ))}
+                      {opType === "Поступление" && (
+                        <option value="NEW" className="text-blue-600 font-bold bg-blue-50">➕ [+ Добавить новый товар в каталог]</option>
+                      )}
+                    </select>
+                  </div>
+
+                  {opForm.itemId === "NEW" && (
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
+                      <p className="text-xs font-bold text-blue-800">Создание нового товара в каталоге:</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500">Артикул (SKU)</label>
+                          <input type="text" placeholder="Напр. SKU-999" value={opForm.newItemSku} onChange={(e) => setOpForm({ ...opForm, newItemSku: e.target.value })} className="w-full px-2 py-1 text-xs border rounded bg-white" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500">Наименование</label>
+                          <input type="text" placeholder="Труба медная" value={opForm.newItemName} onChange={(e) => setOpForm({ ...opForm, newItemName: e.target.value })} className="w-full px-2 py-1 text-xs border rounded bg-white" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500">Категория</label>
+                          <select value={opForm.newItemCategory} onChange={(e) => setOpForm({ ...opForm, newItemCategory: Number(e.target.value) })} className="w-full px-1 py-1 text-xs border rounded bg-white">
+                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500">Ед. изм.</label>
+                          <input type="text" placeholder="шт" value={opForm.newItemUnit} onChange={(e) => setOpForm({ ...opForm, newItemUnit: e.target.value })} className="w-full px-2 py-1 text-xs border rounded bg-white" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500">Мин. остаток</label>
+                          <input type="number" value={opForm.newItemMinStock} onChange={(e) => setOpForm({ ...opForm, newItemMinStock: Number(e.target.value) })} className="w-full px-2 py-1 text-xs border rounded bg-white" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase">Количество</label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        placeholder="Кол-во"
+                        value={opForm.qty}
+                        onChange={(e) => setOpForm({ ...opForm, qty: e.target.value })}
+                        className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase">Цена за единицу (руб.)</label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        placeholder="Цена"
+                        value={opForm.price}
+                        onChange={(e) => setOpForm({ ...opForm, price: e.target.value })}
+                        className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  {opType === "Перемещение" ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase">Склад-ОТПРАВИТЕЛЬ</label>
+                        <select
+                          required
+                          value={opForm.sourceWarehouseId}
+                          onChange={(e) => setOpForm({ ...opForm, sourceWarehouseId: e.target.value })}
+                          className="mt-1 block w-full px-3 py-2 border rounded-md bg-white shadow-sm focus:ring-primary focus:border-primary"
+                        >
+                          <option value="">-- Откуда --</option>
+                          {warehouses.map(w => (
+                            <option key={w.id} value={w.id}>{w.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase">Склад-ПОЛУЧАТЕЛЬ</label>
+                        <select
+                          required
+                          value={opForm.warehouseId}
+                          onChange={(e) => setOpForm({ ...opForm, warehouseId: e.target.value })}
+                          className="mt-1 block w-full px-3 py-2 border rounded-md bg-white shadow-sm focus:ring-primary focus:border-primary"
+                        >
+                          <option value="">-- Куда --</option>
+                          {warehouses.map(w => (
+                            <option key={w.id} value={w.id}>{w.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase">Склад хранения</label>
+                      <select
+                        required
+                        value={opForm.warehouseId}
+                        onChange={(e) => setOpForm({ ...opForm, warehouseId: e.target.value })}
+                        className="mt-1 block w-full px-3 py-2 border rounded-md bg-white shadow-sm focus:ring-primary focus:border-primary"
+                      >
+                        <option value="">-- Выберите склад размещения --</option>
+                        {warehouses.map(w => (
+                          <option key={w.id} value={w.id}>{w.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {opType === "Поступление" && (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase">Поставщик</label>
+                      <select
+                        required
+                        value={opForm.counterparty}
+                        onChange={(e) => setOpForm({ ...opForm, counterparty: e.target.value })}
+                        className="mt-1 block w-full px-3 py-2 border rounded-md bg-white shadow-sm focus:ring-primary focus:border-primary"
+                      >
+                        <option value="">-- Выберите поставщика --</option>
+                        {sellers.map(s => (
+                          <option key={s.id} value={s.name}>{s.name}</option>
+                        ))}
+                        <option value="NEW" className="text-blue-600 font-bold bg-blue-50 font-medium">➕ [Добавить нового поставщика на лету]</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {opType === "Отгрузка" && (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase">Покупатель (Клиент)</label>
+                      <select
+                        required
+                        value={opForm.counterparty}
+                        onChange={(e) => setOpForm({ ...opForm, counterparty: e.target.value })}
+                        className="mt-1 block w-full px-3 py-2 border rounded-md bg-white shadow-sm focus:ring-primary focus:border-primary"
+                      >
+                        <option value="">-- Выберите клиента --</option>
+                        {clients.map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                        <option value="NEW" className="text-blue-600 font-bold bg-blue-50 font-medium">➕ [Добавить нового покупателя на лету]</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {opType === "Списание" && (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase">Причина списания</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Напр.: Производственный брак, деформация корпуса"
+                        value={opForm.counterparty}
+                        onChange={(e) => setOpForm({ ...opForm, counterparty: e.target.value })}
+                        className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                      />
+                    </div>
+                  )}
+
+                  {opForm.counterparty === "NEW" && (
+                    <div className="p-4 bg-orange-50 rounded-lg border border-orange-200 space-y-3">
+                      <p className="text-xs font-bold text-orange-800">Быстрое создание контрагента:</p>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500">Название компании / ФИО</label>
+                        <input 
+                          type="text" 
+                          required
+                          placeholder="ООО Ромашка или ИП Иванов" 
+                          value={opForm.newCounterpartyName} 
+                          onChange={(e) => setOpForm({ ...opForm, newCounterpartyName: e.target.value, newCounterpartyType: opType === 'Поступление' ? 'seller' : 'client' })} 
+                          className="w-full px-2 py-1 text-xs border rounded bg-white mt-1 shadow-sm" 
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-4 border-t">
+                    <button type="button" onClick={() => setShowOpModal(false)} className="px-4 py-2 border rounded text-slate-600 hover:bg-slate-50">Отмена</button>
+                    <button type="submit" className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-700">Провести документ</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Ж-2: МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ОПЕРАЦИИ (Только Admin) */}
+          {showEditOpModal && editingOp && (
+            <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4 overflow-y-auto">
+              <div className="bg-white rounded-lg max-w-lg w-full p-6 shadow-xl my-8">
+                <div className="flex justify-between items-center mb-4 border-b pb-2">
+                  <h3 className="text-lg font-bold text-slate-900">Редактирование операции (Админ-панель)</h3>
+                  <button onClick={() => setShowEditOpModal(false)} className="text-slate-400 hover:text-slate-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+
+                <form onSubmit={handleUpdateOperation} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Тип операции</label>
+                    <input type="text" disabled value={editingOp.type} className="mt-1 block w-full px-3 py-2 border rounded-md bg-slate-100 text-slate-600 cursor-not-allowed" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Товар</label>
+                    <input type="text" disabled value={items.find(i => i.id === editingOp.itemId)?.name || ""} className="mt-1 block w-full px-3 py-2 border rounded-md bg-slate-100 text-slate-600 cursor-not-allowed" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase">Количество</label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={editingOp.qty}
+                        onChange={(e) => setEditingOp({ ...editingOp, qty: e.target.value })}
+                        className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase">Цена (руб.)</label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        value={editingOp.price}
+                        onChange={(e) => setEditingOp({ ...editingOp, price: e.target.value })}
+                        className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase">Контрагент / Описание</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingOp.counterparty}
+                      onChange={(e) => setEditingOp({ ...editingOp, counterparty: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-4 border-t">
+                    <button type="button" onClick={() => setShowEditOpModal(false)} className="px-4 py-2 border rounded text-slate-600 hover:bg-slate-50">Отмена</button>
+                    <button type="submit" className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-700">Сохранить изменения</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* З: МОДАЛЬНОЕ ОКНО ИНВЕНТАРИЗАЦИИ */}
+          {showInventoryModal && (
+            <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4 overflow-y-auto">
+              <div className="bg-white rounded-lg max-w-2xl w-full p-6 shadow-xl my-8">
+                <div className="flex justify-between items-center mb-4 border-b pb-2">
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Сверка остатков: {warehouses.find(w => w.id === inventoryForm.warehouseId)?.name}
+                  </h3>
+                  <button onClick={() => setShowInventoryModal(false)} className="text-slate-400 hover:text-slate-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+
+                <p className="text-xs text-slate-500 mb-4">
+                  Введите в колонку «Фактический остаток» реальное количество товара на полках.
+                </p>
+
+                <div className="max-h-96 overflow-y-auto border rounded-lg">
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Артикул / Товар</th>
+                        <th className="px-4 py-2 text-center text-xs font-semibold text-slate-500">Учетный остаток</th>
+                        <th className="px-4 py-2 text-center text-xs font-semibold text-slate-500">Фактический остаток</th>
+                        <th className="px-4 py-2 text-center text-xs font-semibold text-slate-500">Разница</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {inventoryForm.items.map(item => (
+                        <tr key={item.itemId}>
+                          <td className="px-4 py-2.5">
+                            <span className="block font-semibold text-slate-900">{item.name}</span>
+                            <span className="text-xs font-mono text-blue-600">{item.sku}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-center font-bold text-slate-700">
+                            {item.currentBalance}
+                          </td>
+                          <td className="px-4 py-2.5 text-center w-32">
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.actualBalance}
+                              onChange={(e) => handleActualBalanceChange(item.itemId, e.target.value)}
+                              className="w-20 px-2 py-1 text-center border rounded-md focus:ring-primary focus:border-primary text-sm shadow-sm"
+                            />
+                          </td>
+                          <td className="px-4 py-2.5 text-center font-bold">
+                            {item.diff === 0 ? (
+                              <span className="text-slate-400">0</span>
+                            ) : item.diff > 0 ? (
+                              <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded text-xs">+{item.diff} (Излишек)</span>
+                            ) : (
+                              <span className="text-red-600 bg-red-50 px-1.5 py-0.5 rounded text-xs">{item.diff} (Недостача)</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+                  <button type="button" onClick={() => setShowInventoryModal(false)} className="px-4 py-2 border rounded text-slate-600 hover:bg-slate-50">Отмена</button>
+                  <button type="button" onClick={handleCommitInventory} className="px-4 py-2 bg-success text-white rounded hover:bg-green-700">Зафиксировать результаты</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(<App />);
+  </script>
+</body>
+</html>
