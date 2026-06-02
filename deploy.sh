@@ -319,7 +319,7 @@ server {
 EOF
 
 # Активация конфигурации Nginx
-sudo ln (без -sf) /etc/nginx/sites-available/vector /etc/nginx/sites-enabled/ 2>/dev/null || sudo ln -sf /etc/nginx/sites-available/vector /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/vector /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo systemctl restart nginx
 
