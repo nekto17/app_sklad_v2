@@ -1,0 +1,81 @@
+-- Создание БД (если требуется)
+-- CREATE DATABASE vector_warehouse;
+
+-- 1. Таблица сотрудников
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL, -- Добавлен столбец пароля
+    role VARCHAR(20) NOT NULL CHECK (role IN ('Admin', 'Manager')),
+    email VARCHAR(100) UNIQUE NOT NULL
+);
+
+-- 2. Таблица категорий товаров
+CREATE TABLE categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL
+);
+
+-- 3. Справочник товаров
+CREATE TABLE items (
+    id SERIAL PRIMARY KEY,
+    sku VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    category_id INT REFERENCES categories(id) ON DELETE SET NULL,
+    unit VARCHAR(10) DEFAULT 'шт',
+    min_stock INT DEFAULT 10 CHECK (min_stock >= 0)
+);
+
+-- 4. Справочник поставщиков
+CREATE TABLE sellers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(150) UNIQUE NOT NULL,
+    contact VARCHAR(100),
+    phone VARCHAR(30),
+    email VARCHAR(100)
+);
+
+-- 5. Справочник покупателей
+CREATE TABLE clients (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(150) UNIQUE NOT NULL,
+    contact VARCHAR(100),
+    phone VARCHAR(30),
+    email VARCHAR(100)
+);
+
+-- 6. Справочник складов
+CREATE TABLE warehouses (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    address VARCHAR(255) NOT NULL
+);
+
+-- 7. Текущие остатки
+CREATE TABLE stock_balances (
+    id SERIAL PRIMARY KEY,
+    item_id INT REFERENCES items(id) ON DELETE CASCADE,
+    warehouse_id INT REFERENCES warehouses(id) ON DELETE CASCADE,
+    balance INT DEFAULT 0 CHECK (balance >= 0),
+    UNIQUE(item_id, warehouse_id)
+);
+
+-- 8. Журнал операций
+CREATE TABLE inventory_logs (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    op_type VARCHAR(20) NOT NULL CHECK (op_type IN ('Поступление', 'Отгрузка', 'Перемещение', 'Списание')),
+    item_id INT REFERENCES items(id) ON DELETE CASCADE,
+    qty INT NOT NULL CHECK (qty > 0),
+    price DECIMAL(10, 2) DEFAULT 0.00,
+    warehouse_id INT REFERENCES warehouses(id) ON DELETE CASCADE,
+    source_warehouse_id INT REFERENCES warehouses(id) ON DELETE SET NULL,
+    counterparty VARCHAR(255),
+    user_name VARCHAR(150) NOT NULL
+);
+
+-- Индексы
+CREATE INDEX idx_items_sku ON items(sku);
+CREATE INDEX idx_stock_balances_item_warehouse ON stock_balances(item_id, warehouse_id);
+CREATE INDEX idx_inventory_logs_timestamp ON inventory_logs(timestamp);
